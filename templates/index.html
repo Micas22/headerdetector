@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Heading Auditor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne+Mono&family=Syne:wght@400;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0c0f;
+      --surface:   #111418;
+      --border:    #1e2329;
+      --border-hi: #2e3540;
+      --text:      #d4dae4;
+      --muted:     #4a5568;
+      --pass:      #00e5a0;
+      --pass-dim:  #00e5a015;
+      --fail:      #ff4d6a;
+      --fail-dim:  #ff4d6a12;
+      --warn:      #f5a623;
+      --warn-dim:  #f5a62314;
+      --accent:    #4f8ef7;
+      --accent-dim:#4f8ef710;
+      --img:       #c084fc;
+      --img-dim:   #c084fc12;
+      --mono:      'Syne Mono', monospace;
+      --sans:      'Syne', sans-serif;
+      --r:         6px;
+    }
+
+    html { font-size: 15px; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      padding-bottom: 80px;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+      opacity: 0.025;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .wrap {
+      position: relative; z-index: 1;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ── header ── */
+    header {
+      padding: 52px 0 40px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 40px;
+    }
+    .header-eyebrow {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.18em;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    h1.logo {
+      font-size: 2.4rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      color: #fff;
+    }
+    h1.logo span { color: var(--pass); }
+    .header-sub {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    /* ── input ── */
+    .input-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 24px;
+      margin-bottom: 32px;
+    }
+    .input-label {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border-hi);
+      border-radius: var(--r);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      line-height: 1.7;
+      padding: 14px 16px;
+      resize: vertical;
+      min-height: 110px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    textarea:focus { border-color: var(--accent); }
+    textarea::placeholder { color: var(--muted); }
+    .input-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 14px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .hint { font-size: 0.75rem; color: var(--muted); }
+
+    /* ── button ── */
+    .btn-audit {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--pass);
+      color: #000;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      border: none;
+      border-radius: var(--r);
+      padding: 11px 24px;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+    .btn-audit:hover { opacity: 0.88; }
+    .btn-audit:active { transform: scale(0.97); }
+    .btn-audit:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid #0004;
+      border-top-color: #000;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading .spinner { display: block; }
+    .loading .btn-icon { display: none; }
+
+    /* ── summary bar ── */
+    #summary-bar {
+      display: none;
+      align-items: center;
+      gap: 20px;
+      padding: 14px 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      margin-bottom: 28px;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      flex-wrap: wrap;
+    }
+    #summary-bar.visible { display: flex; animation: fadeUp 0.3s ease; }
+    .sum-item { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+    .sum-item strong { font-size: 1.1rem; }
+    .sum-item.total strong { color: var(--text); }
+    .sum-item.pass  strong { color: var(--pass); }
+    .sum-item.fail  strong { color: var(--fail); }
+    .sum-item.img-h1 strong { color: var(--img); }
+
+    /* ── cards ── */
+    #results { display: flex; flex-direction: column; gap: 16px; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+      animation: fadeUp 0.35s ease both;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .card.is-pass     { border-color: #00e5a030; }
+    .card.is-fail     { border-color: #ff4d6a30; }
+    .card.has-img-h1  { border-color: #c084fc30; }
+    /* fail overrides img border when both apply */
+    .card.is-fail.has-img-h1 { border-color: #ff4d6a30; }
+
+    .card-stripe { height: 3px; background: var(--muted); }
+    .card.is-pass .card-stripe     { background: var(--pass); }
+    .card.is-fail .card-stripe     { background: var(--fail); }
+    .card.has-img-h1 .card-stripe  { background: var(--img); }
+    .card.is-fail.has-img-h1 .card-stripe { background: var(--fail); }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 20px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .card-header:hover .card-url { color: var(--accent); }
+    .card-url-wrap { min-width: 0; flex: 1; }
+    .card-url {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--text);
+      word-break: break-all;
+      transition: color 0.15s;
+    }
+    .card-meta { font-size: 0.7rem; color: var(--muted); margin-top: 3px; font-family: var(--mono); }
+
+    .card-badges { display: flex; align-items: center; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+
+    /* ── badges ── */
+    .badge {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 3px;
+      white-space: nowrap;
+    }
+    .badge.pass    { background: var(--pass-dim);  color: var(--pass); border: 1px solid #00e5a040; }
+    .badge.fail    { background: var(--fail-dim);  color: var(--fail); border: 1px solid #ff4d6a40; }
+    .badge.warn    { background: var(--warn-dim);  color: var(--warn); border: 1px solid #f5a62340; }
+    .badge.img-h1  { background: var(--img-dim);   color: var(--img);  border: 1px solid #c084fc40; }
+
+    .chevron { color: var(--muted); font-size: 0.7rem; transition: transform 0.2s; flex-shrink: 0; }
+    .card.open .chevron { transform: rotate(180deg); }
+
+    .card-body { display: none; border-top: 1px solid var(--border); }
+    .card.open .card-body { display: block; }
+
+    /* ── checks grid ── */
+    .checks-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background: var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .check-cell {
+      background: var(--surface);
+      padding: 14px 20px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .check-icon { font-size: 1rem; line-height: 1.3; flex-shrink: 0; }
+    .check-name { font-size: 0.75rem; font-weight: 700; margin-bottom: 2px; color: var(--text); }
+    .check-detail { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); line-height: 1.5; }
+
+    /* ── image-h1 callout ── */
+    .img-h1-callout {
+      margin: 14px 20px;
+      padding: 14px 16px;
+      background: var(--img-dim);
+      border: 1px solid #c084fc30;
+      border-left: 3px solid var(--img);
+      border-radius: var(--r);
+    }
+    .img-h1-callout-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--img);
+      margin-bottom: 6px;
+    }
+    .img-h1-callout-title .ci { font-size: 1rem; }
+    .img-h1-detail {
+      font-size: 0.77rem;
+      color: var(--text);
+      opacity: 0.85;
+      line-height: 1.55;
+    }
+    .img-h1-alt {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      margin-top: 7px;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      padding: 4px 10px;
+      border-radius: 3px;
+    }
+    .img-h1-alt.has-alt {
+      background: var(--pass-dim);
+      color: var(--pass);
+      border: 1px solid #00e5a030;
+    }
+    .img-h1-alt.no-alt {
+      background: var(--warn-dim);
+      color: var(--warn);
+      border: 1px solid #f5a62330;
+    }
+
+    /* ── issues ── */
+    .issues-block {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .issues-title {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--fail);
+      margin-bottom: 10px;
+    }
+    .issue-item {
+      display: flex;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      font-size: 0.77rem;
+      line-height: 1.5;
+    }
+    .issue-item.error   { background: var(--fail-dim); border: 1px solid #ff4d6a20; }
+    .issue-item.warning { background: var(--img-dim);  border: 1px solid #c084fc20; }
+    .issue-rule {
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 1px 6px;
+      border-radius: 2px;
+      flex-shrink: 0;
+      align-self: flex-start;
+      margin-top: 2px;
+    }
+    .issue-item.error   .issue-rule { color: var(--fail); background: #ff4d6a20; }
+    .issue-item.warning .issue-rule { color: var(--img);  background: #c084fc20; }
+
+    /* ── tree ── */
+    .tree-block { padding: 14px 20px 20px; }
+    .tree-title {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .tree-node {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding: 3px 0;
+      line-height: 1.4;
+    }
+    .tree-indent { display: inline-block; flex-shrink: 0; }
+    .tree-tag {
+      font-family: var(--mono);
+      font-size: 0.66rem;
+      color: var(--accent);
+      background: var(--accent-dim);
+      border: 1px solid #4f8ef720;
+      padding: 1px 6px;
+      border-radius: 3px;
+      flex-shrink: 0;
+      min-width: 32px;
+      text-align: center;
+    }
+    .tree-tag.h1 { color: var(--pass); background: var(--pass-dim); border-color: #00e5a025; }
+    .tree-tag.h1.img { color: var(--img); background: var(--img-dim); border-color: #c084fc30; }
+    .tree-tag.h2 { color: #a78bfa; background: #a78bfa10; border-color: #a78bfa25; }
+    .tree-tag.h3 { color: var(--accent); }
+    .tree-tag.h4, .tree-tag.h5, .tree-tag.h6 { color: var(--muted); background: transparent; }
+    .tree-text { font-size: 0.78rem; color: var(--text); opacity: 0.8; }
+    .tree-img-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--img);
+      background: var(--img-dim);
+      border: 1px solid #c084fc25;
+      padding: 1px 7px;
+      border-radius: 3px;
+    }
+
+    /* ── fetch error ── */
+    .fetch-error {
+      padding: 14px 20px;
+      font-family: var(--mono);
+      font-size: 0.77rem;
+      color: var(--fail);
+    }
+
+    /* ── toast ── */
+    #toast {
+      position: fixed;
+      bottom: 24px; left: 50%; transform: translateX(-50%) translateY(16px);
+      background: var(--fail);
+      color: #fff;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      padding: 10px 20px;
+      border-radius: var(--r);
+      opacity: 0;
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+      z-index: 100;
+      white-space: nowrap;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    @media (max-width: 560px) {
+      .checks-row { grid-template-columns: 1fr; }
+      h1.logo { font-size: 1.8rem; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <p class="header-eyebrow">SEO / Accessibility Tool</p>
+    <h1 class="logo">heading<span>.</span>audit</h1>
+    <p class="header-sub">Checks every page for a single &lt;h1&gt; and correct heading hierarchy.</p>
+  </header>
+
+  <section class="input-section">
+    <p class="input-label">URLs to audit</p>
+    <textarea
+      id="url-input"
+      placeholder="https://example.com&#10;https://another.com&#10;one URL per line"
+      spellcheck="false"
+    ></textarea>
+    <div class="input-footer">
+      <span class="hint">One URL per line &mdash; https:// added if missing &mdash; Ctrl+Enter to run.</span>
+      <button class="btn-audit" id="audit-btn" onclick="runAudit()">
+        <span class="btn-icon">▶</span>
+        <div class="spinner"></div>
+        <span>Run Audit</span>
+      </button>
+    </div>
+  </section>
+
+  <div id="summary-bar">
+    <div class="sum-item total"><strong id="sum-total">0</strong> URLs</div>
+    <div class="sum-item pass"><strong id="sum-pass">0</strong> passed</div>
+    <div class="sum-item fail"><strong id="sum-fail">0</strong> failed</div>
+    <div class="sum-item img-h1" id="sum-img-wrap" style="display:none">
+      <strong id="sum-img">0</strong> image &lt;h1&gt;
+    </div>
+  </div>
+
+  <div id="results"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  const $ = id => document.getElementById(id);
+
+  function showToast(msg) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3200);
+  }
+
+  function setLoading(on) {
+    const btn = $('audit-btn');
+    btn.disabled = on;
+    btn.classList.toggle('loading', on);
+  }
+
+  function escHtml(str) {
+    return String(str ?? '')
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* ── image-h1 callout block ── */
+  function buildImgH1Callout(r) {
+    if (!r.h1_is_image) return '';
+
+    // find issues with rule=image_h1
+    const imgIssues = (r.issues || []).filter(i => i.rule === 'image_h1');
+    const msg = imgIssues.length ? imgIssues[0].message : '';
+
+    // determine if it has alt text — look for "alt text:" in the message
+    const hasAlt = msg.toLowerCase().includes('has alt text:');
+    const noAlt  = msg.toLowerCase().includes('no alt text');
+
+    const altChip = hasAlt
+      ? `<div class="img-h1-alt has-alt">✓ alt text present — accessible</div>`
+      : noAlt
+        ? `<div class="img-h1-alt no-alt">⚠ no alt text — may be inaccessible</div>`
+        : '';
+
+    return `
+      <div class="img-h1-callout">
+        <div class="img-h1-callout-title">
+          <span class="ci">🖼</span>
+          Image acting as &lt;h1&gt;
+        </div>
+        <div class="img-h1-detail">
+          This page's &lt;h1&gt; contains an image instead of text.
+          It counts as a valid heading but may affect SEO and accessibility depending on alt text.
+          ${altChip}
+        </div>
+      </div>`;
+  }
+
+  /* ── build card ── */
+  function buildCard(r, idx) {
+    const isPass   = r.pass && !r.fetch_error;
+    const hasImgH1 = !!r.h1_is_image;
+
+    let cardCls = r.fetch_error ? 'is-fail' : (isPass ? 'is-pass' : 'is-fail');
+    if (hasImgH1 && !r.fetch_error) cardCls += ' has-img-h1';
+
+    /* badges */
+    const overallBadge = r.fetch_error
+      ? `<span class="badge warn">Fetch Error</span>`
+      : `<span class="badge ${isPass ? 'pass' : 'fail'}">${isPass ? 'Pass' : 'Fail'}</span>`;
+
+    const imgBadge = hasImgH1 && !r.fetch_error
+      ? `<span class="badge img-h1">🖼 Image H1</span>` : '';
+
+    const h1Badge = !r.fetch_error
+      ? `<span class="badge ${r.h1_pass ? 'pass' : 'fail'}">H1</span>` : '';
+
+    /* meta */
+    const meta = !r.fetch_error
+      ? `${r.heading_count} heading${r.heading_count !== 1 ? 's' : ''}${r.warning_count ? ` · ${r.warning_count} warning${r.warning_count !== 1 ? 's' : ''}` : ''}` : '';
+
+    /* checks row */
+    let checksRow = '';
+    if (!r.fetch_error) {
+      const h1Detail = r.h1_is_image
+        ? `${r.h1_count} &lt;h1&gt; found &mdash; image-based heading`
+        : `${r.h1_count} &lt;h1&gt; tag${r.h1_count !== 1 ? 's' : ''} found &mdash; ${r.h1_pass ? 'exactly 1 ✓' : 'must be exactly 1'}`;
+
+      checksRow = `
+        <div class="checks-row">
+          <div class="check-cell">
+            <span class="check-icon">${r.h1_pass ? (r.h1_is_image ? '🖼' : '✅') : '❌'}</span>
+            <div>
+              <div class="check-name">Single &lt;h1&gt;</div>
+              <div class="check-detail">${h1Detail}</div>
+            </div>
+          </div>
+          <div class="check-cell">
+            <span class="check-icon">${r.hierarchy_pass ? '✅' : '❌'}</span>
+            <div>
+              <div class="check-name">Heading hierarchy</div>
+              <div class="check-detail">${r.hierarchy_pass
+                ? 'No level skips detected ✓'
+                : `${(r.issues||[]).filter(i=>i.rule==='hierarchy').length} skip(s) detected`}</div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    /* image-h1 callout */
+    const imgCallout = buildImgH1Callout(r);
+
+    /* issues (errors only in the issues block; image_h1 warnings shown in callout) */
+    const errorIssues = (r.issues || []).filter(i => i.severity === 'error');
+    const warnIssues  = (r.issues || []).filter(i => i.severity === 'warning' && i.rule !== 'image_h1');
+    const allDisplayIssues = [...errorIssues, ...warnIssues];
+
+    const issuesHtml = allDisplayIssues.length ? `
+      <div class="issues-block">
+        <div class="issues-title">Issues (${allDisplayIssues.length})</div>
+        ${allDisplayIssues.map(i => `
+          <div class="issue-item ${i.severity}">
+            <span class="issue-rule">${escHtml(i.rule.replace(/_/g,' '))}</span>
+            <span>${escHtml(i.message)}</span>
+          </div>`).join('')}
+      </div>` : '';
+
+    /* heading tree */
+    const treeHtml = (r.tree && r.tree.length) ? `
+      <div class="tree-block">
+        <div class="tree-title">Heading tree</div>
+        ${r.tree.map(h => {
+          const isImg = h.is_image;
+          const tagCls = `${h.tag}${isImg ? ' img' : ''}`;
+          const alts = (h.image_alts || []).filter(Boolean);
+          const label = isImg
+            ? `<span class="tree-img-chip">🖼 image${alts.length ? ` · alt: "${escHtml(alts[0])}"` : ' · no alt'}</span>`
+            : `<span class="tree-text">${escHtml(h.text)}</span>`;
+          return `
+            <div class="tree-node">
+              <span class="tree-indent" style="width:${(h.level-1)*18}px"></span>
+              <span class="tree-tag ${tagCls}">${h.tag}</span>
+              ${label}
+            </div>`;
+        }).join('')}
+      </div>` : '';
+
+    const fetchErrHtml = r.fetch_error
+      ? `<div class="fetch-error">✗ ${escHtml(r.fetch_error)}</div>` : '';
+
+    return `
+      <div class="card ${cardCls}" id="card-${idx}">
+        <div class="card-stripe"></div>
+        <div class="card-header" onclick="toggleCard(${idx})">
+          <div class="card-url-wrap">
+            <div class="card-url">${escHtml(r.url)}</div>
+            ${meta ? `<div class="card-meta">${meta}</div>` : ''}
+          </div>
+          <div class="card-badges">
+            ${imgBadge}${h1Badge}${overallBadge}
+            <span class="chevron">▼</span>
+          </div>
+        </div>
+        <div class="card-body">
+          ${fetchErrHtml}
+          ${checksRow}
+          ${imgCallout}
+          ${issuesHtml}
+          ${treeHtml}
+        </div>
+      </div>`;
+  }
+
+  function toggleCard(idx) {
+    document.getElementById(`card-${idx}`).classList.toggle('open');
+  }
+
+  async function runAudit() {
+    const raw = $('url-input').value.trim();
+    const urls = raw.split('\n').map(s => s.trim()).filter(Boolean);
+    if (!urls.length) { showToast('Please enter at least one URL.'); return; }
+
+    setLoading(true);
+    $('results').innerHTML = '';
+    $('summary-bar').classList.remove('visible');
+
+    try {
+      const res  = await fetch('/api/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ urls }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error || 'Server error'); return; }
+
+      const results = data.results || [];
+      if (!results.length) {
+        $('results').innerHTML = '<p style="text-align:center;padding:60px 0;color:var(--muted)">No results returned.</p>';
+        return;
+      }
+
+      $('results').innerHTML = results.map((r, i) => buildCard(r, i)).join('');
+
+      /* auto-open failing + image-h1 cards */
+      results.forEach((r, i) => {
+        if (!r.pass || r.fetch_error || r.h1_is_image)
+          document.getElementById(`card-${i}`).classList.add('open');
+      });
+
+      /* summary */
+      const passed  = results.filter(r => r.pass && !r.fetch_error).length;
+      const imgH1s  = results.filter(r => r.h1_is_image).length;
+      $('sum-total').textContent = results.length;
+      $('sum-pass').textContent  = passed;
+      $('sum-fail').textContent  = results.length - passed;
+      $('sum-img').textContent   = imgH1s;
+      $('sum-img-wrap').style.display = imgH1s ? 'flex' : 'none';
+      $('summary-bar').classList.add('visible');
+
+    } catch(err) {
+      showToast('Network error — is the server running?');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  $('url-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) runAudit();
+  });
+</script>
+</body>
+</html>
