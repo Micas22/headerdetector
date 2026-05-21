@@ -3,14 +3,20 @@ app.py — Flask web server.
 
 Routes
 ------
-  GET  /              → serves the webapp (index.html)
-  POST /api/audit     → accepts JSON {"urls": [...]} and returns audit results
+  GET  /                    → serves the webapp (index.html)
+  POST /api/audit           → {"urls": [...]}       → single-page audit
+  POST /api/audit-paginated → {"listing_urls": [...]} → SSE stream of progress + results
 """
 
-from flask import Flask, jsonify, render_template, request
+import json
+import queue
+import threading
+import time
 
-from checker import check_headings, SEVERITY_ERROR, SEVERITY_WARNING
-from crawler import crawl_many
+from flask import Flask, Response, jsonify, render_template, request, stream_with_context
+
+from checker import check_headings, SEVERITY_WARNING
+from crawler import crawl_many, crawl_paginated
 
 app = Flask(__name__)
 
@@ -19,54 +25,50 @@ def _truncate(text: str, n: int = 80) -> str:
     return text if len(text) <= n else text[:n - 1] + "…"
 
 
+def _build_result_entry(cr) -> dict:
+    entry: dict = {"url": cr.url}
+    if not cr.ok:
+        entry["fetch_error"] = cr.error
+        entry["pass"] = False
+        return entry
+
+    check = check_headings(cr.headings)
+
+    tree = [
+        {
+            "level":      h.level,
+            "tag":        h.tag,
+            "text":       _truncate(h.text) if h.text else None,
+            "is_image":   h.is_image,
+            "image_alts": h.image_alts,
+        }
+        for h in cr.headings
+    ]
+
+    issues = [
+        {"rule": i.rule, "severity": i.severity, "message": i.message}
+        for i in check.all_issues
+    ]
+
+    entry.update({
+        "pass":           check.overall_pass,
+        "h1_pass":        check.h1_pass,
+        "h1_count":       check.h1_count,
+        "h1_is_image":    any(h.level == 1 and h.is_image for h in cr.headings),
+        "hierarchy_pass": check.hierarchy_pass,
+        "heading_count":  len(cr.headings),
+        "warning_count":  sum(1 for i in check.all_issues if i.severity == SEVERITY_WARNING),
+        "tree":           tree,
+        "issues":         issues,
+    })
+    return entry
+
+
 def _build_payload(urls: list[str]) -> list[dict]:
-    results = []
-    for cr in crawl_many(urls):
-        entry: dict = {"url": cr.url}
+    return [_build_result_entry(cr) for cr in crawl_many(urls)]
 
-        if not cr.ok:
-            entry["fetch_error"] = cr.error
-            entry["pass"] = False
-            results.append(entry)
-            continue
 
-        check = check_headings(cr.headings)
-
-        tree = [
-            {
-                "level":      h.level,
-                "tag":        h.tag,
-                "text":       _truncate(h.text) if h.text else None,
-                "is_image":   h.is_image,
-                "image_alts": h.image_alts,
-            }
-            for h in cr.headings
-        ]
-
-        issues = [
-            {
-                "rule":     i.rule,
-                "severity": i.severity,
-                "message":  i.message,
-            }
-            for i in check.all_issues
-        ]
-
-        entry.update({
-            "pass":            check.overall_pass,
-            "h1_pass":         check.h1_pass,
-            "h1_count":        check.h1_count,
-            "h1_is_image":     any(h.level == 1 and h.is_image for h in cr.headings),
-            "hierarchy_pass":  check.hierarchy_pass,
-            "heading_count":   len(cr.headings),
-            "warning_count":   sum(1 for i in check.all_issues if i.severity == SEVERITY_WARNING),
-            "tree":            tree,
-            "issues":          issues,
-        })
-        results.append(entry)
-
-    return results
-
+# ── routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/")
 def index():
@@ -92,11 +94,109 @@ def audit():
 
     try:
         payload = _build_payload(urls)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
     return jsonify({"results": payload})
 
 
+@app.post("/api/audit-paginated")
+def audit_paginated():
+    """
+    Streams Server-Sent Events for live progress.
+
+    Event types sent to client:
+      heartbeat — ": keep-alive" comment line  (every ~20 s, prevents idle timeout)
+      progress  — {"phase":"listing","page":N,"total_pages":T,"found_so_far":K}
+                  {"phase":"items","index":N,"total":T,"url":"..."}
+      result    — {"listing_url":...,"listing_page":N,"entry":{...}}
+      done      — {"total": N}
+      error     — {"message": "..."}
+    """
+    body = request.get_json(silent=True) or {}
+    raw_listing_urls: list[str] = body.get("listing_urls", [])
+
+    listing_urls = []
+    for u in raw_listing_urls:
+        u = u.strip()
+        if not u:
+            continue
+        if not u.startswith(("http://", "https://")):
+            u = "https://" + u
+        listing_urls.append(u)
+
+    if not listing_urls:
+        return jsonify({"error": "No valid listing URLs provided."}), 400
+
+    # Queue shared between crawl thread and SSE generator.
+    # Items are ("event_name", payload_dict) or _HEARTBEAT or _DONE.
+    event_queue: queue.Queue = queue.Queue()
+    _DONE      = object()
+    _HEARTBEAT = object()
+
+    # ── heartbeat thread: sends a ping every 20 s so the browser/proxy
+    #    doesn't close an idle connection while pages are being fetched.
+    def _heartbeat():
+        while True:
+            time.sleep(20)
+            event_queue.put(_HEARTBEAT)
+
+    hb_thread = threading.Thread(target=_heartbeat, daemon=True)
+    hb_thread.start()
+
+    def _run():
+        try:
+            for listing_url in listing_urls:
+                def _progress(info: dict, _lu=listing_url):
+                    event_queue.put(("progress", {**info, "listing_url": _lu}))
+
+                paginated_results = crawl_paginated(
+                    listing_url=listing_url,
+                    progress_callback=_progress,
+                )
+
+                for pr in paginated_results:
+                    entry = _build_result_entry(pr.crawl)
+                    event_queue.put(("result", {
+                        "listing_url":  pr.listing_url,
+                        "listing_page": pr.listing_page,
+                        "entry":        entry,
+                    }))
+        except Exception as exc:
+            event_queue.put(("error", {"message": str(exc)}))
+        finally:
+            event_queue.put(_DONE)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+    def _generate():
+        total_results = 0
+        while True:
+            item = event_queue.get()
+            if item is _DONE:
+                yield f"event: done\ndata: {json.dumps({'total': total_results})}\n\n"
+                break
+            if item is _HEARTBEAT:
+                # SSE comment — keeps the connection alive, ignored by the client
+                yield ": keep-alive\n\n"
+                continue
+            event_name, payload = item
+            if event_name == "result":
+                total_results += 1
+            yield f"event: {event_name}\ndata: {json.dumps(payload)}\n\n"
+
+    return Response(
+        stream_with_context(_generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control":     "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection":        "keep-alive",
+        },
+    )
+
+
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    # threaded=True is required so the SSE generator and the crawl thread
+    # can run concurrently under Flask's dev server.
+    app.run(debug=True, port=5000, threaded=True)

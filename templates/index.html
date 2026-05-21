@@ -86,7 +86,38 @@
       font-size: 0.88rem;
     }
 
-    /* ── input ── */
+    /* ── mode toggle ── */
+    .mode-toggle {
+      display: flex;
+      gap: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 4px;
+      margin-bottom: 14px;
+      width: fit-content;
+    }
+    .mode-btn {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: transparent;
+      border: none;
+      border-radius: 4px;
+      padding: 8px 18px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    .mode-btn.active {
+      background: var(--border-hi);
+      color: var(--text);
+    }
+    .mode-btn:hover:not(.active) { color: var(--text); }
+
+    /* ── input section ── */
     .input-section {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -129,6 +160,36 @@
     }
     .hint { font-size: 0.75rem; color: var(--muted); }
 
+    /* paginated extra options */
+    .paginated-options {
+      display: none;
+      gap: 12px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+    .paginated-options.visible { display: flex; }
+    .opt-field { display: flex; flex-direction: column; gap: 5px; }
+    .opt-field label {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .opt-field input[type=number] {
+      width: 100px;
+      background: var(--bg);
+      border: 1px solid var(--border-hi);
+      border-radius: var(--r);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      padding: 8px 12px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .opt-field input[type=number]:focus { border-color: var(--accent); }
+
     /* ── button ── */
     .btn-audit {
       display: inline-flex;
@@ -163,6 +224,42 @@
     .loading .spinner { display: block; }
     .loading .btn-icon { display: none; }
 
+    /* ── progress bar (paginated mode) ── */
+    #progress-box {
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+    }
+    #progress-box.visible { display: block; animation: fadeUp 0.25s ease; }
+    .progress-label { color: var(--muted); margin-bottom: 8px; }
+    .progress-label strong { color: var(--text); }
+    .progress-track {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+    .progress-url {
+      color: var(--muted);
+      font-size: 0.68rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     /* ── summary bar ── */
     #summary-bar {
       display: none;
@@ -185,6 +282,33 @@
     .sum-item.fail  strong { color: var(--fail); }
     .sum-item.img-h1 strong { color: var(--img); }
 
+    /* ── paginated listing group header ── */
+    .listing-group {
+      margin-bottom: 10px;
+    }
+    .listing-group-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      margin-bottom: 8px;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .listing-group-header .listing-url {
+      color: var(--accent);
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .listing-group-header .listing-stats { flex-shrink: 0; }
+    .listing-group-cards { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+
     /* ── cards ── */
     #results { display: flex; flex-direction: column; gap: 16px; }
 
@@ -202,7 +326,6 @@
     .card.is-pass     { border-color: #00e5a030; }
     .card.is-fail     { border-color: #ff4d6a30; }
     .card.has-img-h1  { border-color: #c084fc30; }
-    /* fail overrides img border when both apply */
     .card.is-fail.has-img-h1 { border-color: #ff4d6a30; }
 
     .card-stripe { height: 3px; background: var(--muted); }
@@ -448,25 +571,44 @@
     <p class="header-sub">Checks every page for a single &lt;h1&gt; and correct heading hierarchy.</p>
   </header>
 
+  <!-- mode toggle -->
+  <div class="mode-toggle">
+    <button class="mode-btn active" id="btn-mode-single" onclick="setMode('single')">▶ Single pages</button>
+    <button class="mode-btn" id="btn-mode-paginated" onclick="setMode('paginated')">⬛ Paginated listing</button>
+  </div>
+
   <section class="input-section">
-    <p class="input-label">URLs to audit</p>
+    <!-- single mode label -->
+    <p class="input-label" id="label-single">URLs to audit</p>
+    <!-- paginated mode label -->
+    <p class="input-label" id="label-paginated" style="display:none">Listing page URLs (news / events index)</p>
+
     <textarea
       id="url-input"
       placeholder="https://example.com&#10;https://another.com&#10;one URL per line"
       spellcheck="false"
     ></textarea>
+
     <div class="input-footer">
-      <span class="hint">One URL per line &mdash; https:// added if missing &mdash; Ctrl+Enter to run.</span>
+      <span class="hint" id="hint-single">One URL per line &mdash; https:// added if missing &mdash; Ctrl+Enter to run.</span>
+      <span class="hint" id="hint-paginated" style="display:none">Enter the news/events <em>index</em> page &mdash; the crawler follows all cards across every pagination page.</span>
       <button class="btn-audit" id="audit-btn" onclick="runAudit()">
         <span class="btn-icon">▶</span>
         <div class="spinner"></div>
-        <span>Run Audit</span>
+        <span id="btn-label">Run Audit</span>
       </button>
     </div>
   </section>
 
+  <!-- progress box (paginated only) -->
+  <div id="progress-box">
+    <div class="progress-label" id="progress-label">Starting…</div>
+    <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    <div class="progress-url" id="progress-url"></div>
+  </div>
+
   <div id="summary-bar">
-    <div class="sum-item total"><strong id="sum-total">0</strong> URLs</div>
+    <div class="sum-item total"><strong id="sum-total">0</strong> pages</div>
     <div class="sum-item pass"><strong id="sum-pass">0</strong> passed</div>
     <div class="sum-item fail"><strong id="sum-fail">0</strong> failed</div>
     <div class="sum-item img-h1" id="sum-img-wrap" style="display:none">
@@ -482,6 +624,32 @@
 <script>
   const $ = id => document.getElementById(id);
 
+  // ── mode ──────────────────────────────────────────────────────────────────
+  let currentMode = 'single';
+
+  function setMode(mode) {
+    currentMode = mode;
+    $('btn-mode-single').classList.toggle('active', mode === 'single');
+    $('btn-mode-paginated').classList.toggle('active', mode === 'paginated');
+
+    $('label-single').style.display    = mode === 'single'    ? '' : 'none';
+    $('label-paginated').style.display = mode === 'paginated' ? '' : 'none';
+    $('hint-single').style.display     = mode === 'single'    ? '' : 'none';
+    $('hint-paginated').style.display  = mode === 'paginated' ? '' : 'none';
+    $('btn-label').textContent = mode === 'paginated' ? 'Crawl Listing' : 'Run Audit';
+
+    const ta = $('url-input');
+    ta.placeholder = mode === 'paginated'
+      ? 'https://example.com/news\nhttps://example.com/events\none listing URL per line'
+      : 'https://example.com\nhttps://another.com\none URL per line';
+
+    // clear previous results when switching modes
+    $('results').innerHTML = '';
+    $('summary-bar').classList.remove('visible');
+    $('progress-box').classList.remove('visible');
+  }
+
+  // ── toast ─────────────────────────────────────────────────────────────────
   function showToast(msg) {
     const t = $('toast');
     t.textContent = msg;
@@ -501,30 +669,21 @@
       .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  /* ── image-h1 callout block ── */
+  // ── image-h1 callout ──────────────────────────────────────────────────────
   function buildImgH1Callout(r) {
     if (!r.h1_is_image) return '';
-
-    // find issues with rule=image_h1
     const imgIssues = (r.issues || []).filter(i => i.rule === 'image_h1');
     const msg = imgIssues.length ? imgIssues[0].message : '';
-
-    // determine if it has alt text — look for "alt text:" in the message
     const hasAlt = msg.toLowerCase().includes('has alt text:');
     const noAlt  = msg.toLowerCase().includes('no alt text');
-
     const altChip = hasAlt
       ? `<div class="img-h1-alt has-alt">✓ alt text present — accessible</div>`
       : noAlt
         ? `<div class="img-h1-alt no-alt">⚠ no alt text — may be inaccessible</div>`
         : '';
-
     return `
       <div class="img-h1-callout">
-        <div class="img-h1-callout-title">
-          <span class="ci">🖼</span>
-          Image acting as &lt;h1&gt;
-        </div>
+        <div class="img-h1-callout-title"><span class="ci">🖼</span> Image acting as &lt;h1&gt;</div>
         <div class="img-h1-detail">
           This page's &lt;h1&gt; contains an image instead of text.
           It counts as a valid heading but may affect SEO and accessibility depending on alt text.
@@ -533,7 +692,7 @@
       </div>`;
   }
 
-  /* ── build card ── */
+  // ── build card ────────────────────────────────────────────────────────────
   function buildCard(r, idx) {
     const isPass   = r.pass && !r.fetch_error;
     const hasImgH1 = !!r.h1_is_image;
@@ -541,28 +700,22 @@
     let cardCls = r.fetch_error ? 'is-fail' : (isPass ? 'is-pass' : 'is-fail');
     if (hasImgH1 && !r.fetch_error) cardCls += ' has-img-h1';
 
-    /* badges */
     const overallBadge = r.fetch_error
       ? `<span class="badge warn">Fetch Error</span>`
       : `<span class="badge ${isPass ? 'pass' : 'fail'}">${isPass ? 'Pass' : 'Fail'}</span>`;
-
     const imgBadge = hasImgH1 && !r.fetch_error
       ? `<span class="badge img-h1">🖼 Image H1</span>` : '';
-
     const h1Badge = !r.fetch_error
       ? `<span class="badge ${r.h1_pass ? 'pass' : 'fail'}">H1</span>` : '';
 
-    /* meta */
     const meta = !r.fetch_error
       ? `${r.heading_count} heading${r.heading_count !== 1 ? 's' : ''}${r.warning_count ? ` · ${r.warning_count} warning${r.warning_count !== 1 ? 's' : ''}` : ''}` : '';
 
-    /* checks row */
     let checksRow = '';
     if (!r.fetch_error) {
       const h1Detail = r.h1_is_image
         ? `${r.h1_count} &lt;h1&gt; found &mdash; image-based heading`
         : `${r.h1_count} &lt;h1&gt; tag${r.h1_count !== 1 ? 's' : ''} found &mdash; ${r.h1_pass ? 'exactly 1 ✓' : 'must be exactly 1'}`;
-
       checksRow = `
         <div class="checks-row">
           <div class="check-cell">
@@ -584,14 +737,11 @@
         </div>`;
     }
 
-    /* image-h1 callout */
     const imgCallout = buildImgH1Callout(r);
 
-    /* issues (errors only in the issues block; image_h1 warnings shown in callout) */
     const errorIssues = (r.issues || []).filter(i => i.severity === 'error');
     const warnIssues  = (r.issues || []).filter(i => i.severity === 'warning' && i.rule !== 'image_h1');
     const allDisplayIssues = [...errorIssues, ...warnIssues];
-
     const issuesHtml = allDisplayIssues.length ? `
       <div class="issues-block">
         <div class="issues-title">Issues (${allDisplayIssues.length})</div>
@@ -602,7 +752,6 @@
           </div>`).join('')}
       </div>` : '';
 
-    /* heading tree */
     const treeHtml = (r.tree && r.tree.length) ? `
       <div class="tree-block">
         <div class="tree-title">Heading tree</div>
@@ -639,11 +788,7 @@
           </div>
         </div>
         <div class="card-body">
-          ${fetchErrHtml}
-          ${checksRow}
-          ${imgCallout}
-          ${issuesHtml}
-          ${treeHtml}
+          ${fetchErrHtml}${checksRow}${imgCallout}${issuesHtml}${treeHtml}
         </div>
       </div>`;
   }
@@ -652,50 +797,187 @@
     document.getElementById(`card-${idx}`).classList.toggle('open');
   }
 
+  // ── update summary ────────────────────────────────────────────────────────
+  function updateSummary(results) {
+    const passed = results.filter(r => r.pass && !r.fetch_error).length;
+    const imgH1s = results.filter(r => r.h1_is_image).length;
+    $('sum-total').textContent = results.length;
+    $('sum-pass').textContent  = passed;
+    $('sum-fail').textContent  = results.length - passed;
+    $('sum-img').textContent   = imgH1s;
+    $('sum-img-wrap').style.display = imgH1s ? 'flex' : 'none';
+    $('summary-bar').classList.add('visible');
+  }
+
+  // ── single-page audit ─────────────────────────────────────────────────────
+  async function runSingleAudit(urls) {
+    const res  = await fetch('/api/audit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ urls }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || 'Server error'); return; }
+
+    const results = data.results || [];
+    if (!results.length) {
+      $('results').innerHTML = '<p style="text-align:center;padding:60px 0;color:var(--muted)">No results returned.</p>';
+      return;
+    }
+
+    $('results').innerHTML = results.map((r, i) => buildCard(r, i)).join('');
+    results.forEach((r, i) => {
+      if (!r.pass || r.fetch_error || r.h1_is_image)
+        document.getElementById(`card-${i}`).classList.add('open');
+    });
+    updateSummary(results);
+  }
+
+  // ── paginated audit ───────────────────────────────────────────────────────
+  async function runPaginatedAudit(listingUrls) {
+    const pb      = $('progress-box');
+    const pfill   = $('progress-fill');
+    const plabel  = $('progress-label');
+    const purl    = $('progress-url');
+    const resultsEl = $('results');
+
+    pb.classList.add('visible');
+    plabel.innerHTML = 'Fetching listing pages…';
+    pfill.style.width = '0%';
+
+    // We'll group cards by listing_url
+    // groupOrder keeps insertion order; groups[url] = {header info, results[]}
+    const groupOrder = [];
+    const groups = {};
+    let cardIdx = 0;
+    let allResults = [];
+
+    // track listing progress
+    let listingTotal = 1;
+    let itemsTotal   = 0;
+
+    const res = await fetch('/api/audit-paginated', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ listing_urls: listingUrls }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.error || 'Server error');
+      return;
+    }
+
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let   buf     = '';
+
+    function ensureGroup(listingUrl) {
+      if (!groups[listingUrl]) {
+        groupOrder.push(listingUrl);
+        groups[listingUrl] = { results: [], domId: `group-${groupOrder.length}` };
+        // create the group DOM
+        const div = document.createElement('div');
+        div.className = 'listing-group';
+        div.id = groups[listingUrl].domId;
+        div.innerHTML = `
+          <div class="listing-group-header">
+            <span>📋</span>
+            <span class="listing-url">${escHtml(listingUrl)}</span>
+            <span class="listing-stats" id="${groups[listingUrl].domId}-stats">0 pages crawled</span>
+          </div>
+          <div class="listing-group-cards" id="${groups[listingUrl].domId}-cards"></div>`;
+        resultsEl.appendChild(div);
+      }
+    }
+
+    function appendCard(listingUrl, entry) {
+      ensureGroup(listingUrl);
+      const g = groups[listingUrl];
+      g.results.push(entry);
+      allResults.push(entry);
+
+      const idx = cardIdx++;
+      const cardHtml = buildCard(entry, idx);
+      const cardsEl = document.getElementById(`${g.domId}-cards`);
+      const tmp = document.createElement('div');
+      tmp.innerHTML = cardHtml;
+      cardsEl.appendChild(tmp.firstElementChild);
+      if (!entry.pass || entry.fetch_error || entry.h1_is_image)
+        document.getElementById(`card-${idx}`).classList.add('open');
+
+      // update group stats
+      const statsEl = document.getElementById(`${g.domId}-stats`);
+      const failed = g.results.filter(r => !r.pass || r.fetch_error).length;
+      statsEl.textContent = `${g.results.length} page${g.results.length !== 1 ? 's' : ''} · ${g.results.length - failed} passed · ${failed} failed`;
+
+      updateSummary(allResults);
+    }
+
+    // parse SSE stream
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const events = buf.split('\n\n');
+      buf = events.pop(); // keep incomplete tail
+
+      for (const block of events) {
+        if (!block.trim()) continue;
+        let eventName = 'message', dataStr = '';
+        for (const line of block.split('\n')) {
+          if (line.startsWith('event: ')) eventName = line.slice(7).trim();
+          if (line.startsWith('data: '))  dataStr   = line.slice(6).trim();
+        }
+        if (!dataStr) continue;
+        let payload;
+        try { payload = JSON.parse(dataStr); } catch { continue; }
+
+        if (eventName === 'progress') {
+          if (payload.phase === 'listing') {
+            listingTotal = payload.total_pages || 1;
+            plabel.innerHTML = `<strong>Scanning listing pages</strong> — page ${payload.page} of ${listingTotal}`;
+            pfill.style.width = `${Math.round((payload.page / listingTotal) * 40)}%`;
+            purl.textContent = payload.listing_url || '';
+          } else if (payload.phase === 'items') {
+            itemsTotal = payload.total || 1;
+            const pct = 40 + Math.round((payload.index / itemsTotal) * 60);
+            plabel.innerHTML = `<strong>Auditing item pages</strong> — ${payload.index} / ${itemsTotal}`;
+            pfill.style.width = `${pct}%`;
+            purl.textContent = payload.url || '';
+          }
+        } else if (eventName === 'result') {
+          appendCard(payload.listing_url, payload.entry);
+        } else if (eventName === 'error') {
+          showToast(payload.message || 'Crawl error');
+        } else if (eventName === 'done') {
+          plabel.innerHTML = `<strong>Done</strong> — ${payload.total} page${payload.total !== 1 ? 's' : ''} audited`;
+          pfill.style.width = '100%';
+          purl.textContent = '';
+        }
+      }
+    }
+  }
+
+  // ── main entry ────────────────────────────────────────────────────────────
   async function runAudit() {
-    const raw = $('url-input').value.trim();
+    const raw  = $('url-input').value.trim();
     const urls = raw.split('\n').map(s => s.trim()).filter(Boolean);
     if (!urls.length) { showToast('Please enter at least one URL.'); return; }
 
     setLoading(true);
     $('results').innerHTML = '';
     $('summary-bar').classList.remove('visible');
+    $('progress-box').classList.remove('visible');
 
     try {
-      const res  = await fetch('/api/audit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ urls }),
-      });
-      const data = await res.json();
-      if (!res.ok) { showToast(data.error || 'Server error'); return; }
-
-      const results = data.results || [];
-      if (!results.length) {
-        $('results').innerHTML = '<p style="text-align:center;padding:60px 0;color:var(--muted)">No results returned.</p>';
-        return;
+      if (currentMode === 'paginated') {
+        await runPaginatedAudit(urls);
+      } else {
+        await runSingleAudit(urls);
       }
-
-      $('results').innerHTML = results.map((r, i) => buildCard(r, i)).join('');
-
-      /* auto-open failing + image-h1 cards */
-      results.forEach((r, i) => {
-        if (!r.pass || r.fetch_error || r.h1_is_image)
-          document.getElementById(`card-${i}`).classList.add('open');
-      });
-
-      /* summary */
-      const passed  = results.filter(r => r.pass && !r.fetch_error).length;
-      const imgH1s  = results.filter(r => r.h1_is_image).length;
-      $('sum-total').textContent = results.length;
-      $('sum-pass').textContent  = passed;
-      $('sum-fail').textContent  = results.length - passed;
-      $('sum-img').textContent   = imgH1s;
-      $('sum-img-wrap').style.display = imgH1s ? 'flex' : 'none';
-      $('summary-bar').classList.add('visible');
-
     } catch(err) {
-      showToast('Network error — is the server running?');
+      showToast(err.message || 'Unexpected error — check the console.');
       console.error(err);
     } finally {
       setLoading(false);

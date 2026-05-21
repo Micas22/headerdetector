@@ -36,7 +36,7 @@ class CheckResult:
     hierarchy_pass:   bool        = False
     hierarchy_issues: list[Issue] = field(default_factory=list)
 
-    # advisory: image-only h1 flags (warnings, not errors)
+    # advisory: image-containing h1 flags (warnings, not errors)
     image_h1_flags: list[Issue] = field(default_factory=list)
 
     @property
@@ -69,7 +69,7 @@ def _truncate(text: str, n: int = 60) -> str:
 
 def _check_single_h1(headings: list[Heading]) -> tuple[int, bool]:
     """
-    Count ALL h1 tags — text or image-only — and pass only when there's exactly 1.
+    Count ALL h1 tags and pass only when there's exactly 1.
     """
     count = sum(1 for h in headings if h.level == 1)
     return count, count == 1
@@ -100,23 +100,36 @@ def _check_hierarchy(headings: list[Heading]) -> tuple[bool, list[Issue]]:
 
 def _check_image_h1s(headings: list[Heading]) -> list[Issue]:
     """
-    Return a WARNING issue for every image-only <h1>, noting whether
-    the image has alt text (accessible) or not (potentially problematic).
+    Return a WARNING issue for every <h1> that contains an image/SVG,
+    noting whether it has alt text (accessible) or not.
+
+    Note: a heading can have BOTH text and an image — we flag it either way
+    because the image itself may carry meaning that needs an alt attribute.
     """
     flags: list[Issue] = []
     for h in headings:
         if h.level == 1 and h.is_image:
             alts = [a for a in h.image_alts if a]  # non-empty alts
-            if alts:
+            if h.text and alts:
+                detail = (
+                    f'Contains text ("{_truncate(h.text)}") and image with '
+                    f'alt text: "{_truncate(alts[0])}".'
+                )
+            elif h.text:
+                detail = (
+                    f'Contains text ("{_truncate(h.text)}") and an image '
+                    f"with no alt text — image invisible to screen readers."
+                )
+            elif alts:
                 alt_preview = _truncate(alts[0])
-                detail = f'Image has alt text: "{alt_preview}" — readable by screen readers & search engines.'
+                detail = f'Image-only; alt text present: "{alt_preview}" — readable by screen readers & search engines.'
             else:
-                detail = "Image has no alt text — invisible to screen readers and search engines."
+                detail = "Image-only with no alt text — invisible to screen readers and search engines."
 
             flags.append(Issue(
                 rule="image_h1",
                 severity=SEVERITY_WARNING,
-                message=f"<h1> is an image, not text. {detail}",
+                message=f"<h1> contains an image element. {detail}",
                 heading=h,
             ))
     return flags
