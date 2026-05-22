@@ -133,72 +133,100 @@ def _fetch_html_simple(url: str, timeout: int = 15) -> Optional[str]:
 
 # ── pagination detection ──────────────────────────────────────────────────────
 
-def _detect_total_pages(html: str) -> int:
+def _detect_total_pages(html: str) -> Optional[int]:
     """
     Detect how many pagination pages a listing has.
+    Returns None if no pagination is detected (caller should treat as 1 page).
 
-    Tries multiple strategies and returns the highest number found:
-      1. Any element whose stripped text is a plain integer (anchors, spans,
-         list items, buttons — pagination widgets use all of these)
-      2. rel="last" / rel="next" link href with page= or /page/ patterns
-      3. aria-label="Page N" or aria-label="N" on pager elements
-      4. Common data attributes: data-page, data-total-pages
-      5. URL patterns in hrefs: ?page=N, /page/N, /p/N, ?pg=N, ?p=N
-    Falls back to 1 if nothing found.
+    Passes are ordered from most-specific to most-generic to avoid false
+    positives from unrelated numbers on the page.
     """
     soup = BeautifulSoup(html, "html.parser")
-    candidates: list[int] = []
 
-    # Strategy 1 — any element with purely numeric text (covers <a>, <span>,
-    # <li>, <button> — pagination widgets use all of these)
-    for el in soup.find_all(["a", "span", "li", "button"]):
-        txt = el.get_text(strip=True)
-        if re.fullmatch(r"\d{1,5}", txt):
-            try:
-                candidates.append(int(txt))
-            except ValueError:
-                pass
-
-    # Strategy 2 — rel="last" or rel="next" href
-    for rel_val in ("last", "next"):
-        link = soup.find("a", rel=lambda r: r and rel_val in r)
-        if link:
-            href = link.get("href", "")
-            m = re.search(r"[?&/](?:page|pg|p)[=/](\d+)", href, re.IGNORECASE)
-            if m:
-                candidates.append(int(m.group(1)))
-
-    # Strategy 3 — aria-label patterns
-    for el in soup.find_all(attrs={"aria-label": True}):
-        m = re.search(r"\b(\d+)\b", el["aria-label"])
+    # Pass 1 — ".pagination--select__label" with "de N" text
+    for label in soup.select(".pagination--select__label"):
+        text = label.get_text(" ", strip=True)
+        m = re.search(r"de\s+(\d+)", text, re.IGNORECASE)
         if m:
-            try:
-                candidates.append(int(m.group(1)))
-            except ValueError:
-                pass
+            return int(m.group(1))
 
-    # Strategy 4 — data-page / data-total-pages attributes
-    for attr in ("data-total-pages", "data-page-count", "data-pages"):
-        el = soup.find(attrs={attr: True})
-        if el:
-            try:
-                candidates.append(int(el[attr]))
-            except (ValueError, TypeError):
-                pass
+    # Pass 2 — any pagination__item <a> that is just a digit
+    page_numbers = [
+        int(a.get_text(strip=True))
+        for a in soup.select("li.pagination__item a")
+        if a.get_text(strip=True).isdigit()
+    ]
+    if page_numbers:
+        return max(page_numbers)
 
-    # Strategy 5 — page numbers inside hrefs on the page
+    # Pass 3 — rel="last" link  <a rel="last" href="?page=N">
+    last_link = soup.find("a", rel=lambda v: v and "last" in v)
+    if last_link:
+        href = last_link.get("href", "")
+        m = re.search(r"[?&]page=(\d+)", href, re.IGNORECASE)
+        if m:
+            return int(m.group(1))
+
+    # Pass 4 — aria-label="Page N" / aria-label="Go to page N"
+    aria_pages = []
+    for tag in soup.find_all(attrs={"aria-label": True}):
+        m = re.search(r"\bpage\s+(\d+)\b", tag["aria-label"], re.IGNORECASE)
+        if m:
+            aria_pages.append(int(m.group(1)))
+    if aria_pages:
+        return max(aria_pages)
+
+    # Pass 5 — digits inside common pagination containers
+    for sel in [
+        "nav[aria-label*='agina' i]",
+        "nav[aria-label*='pagin' i]",
+        ".pagination", ".pager", ".paginator",
+        "[class*='pagination']", "[class*='pager']",
+        "ul.pages", "ol.pages",
+    ]:
+        container = soup.select_one(sel)
+        if not container:
+            continue
+        nums = [
+            int(t)
+            for tag in container.find_all(["a", "span", "button", "li"])
+            for t in [tag.get_text(strip=True)]
+            if t.isdigit() and int(t) > 0
+        ]
+        if nums:
+            return max(nums)
+
+    # Pass 6 — "?page=N" / "/page/N" in any href on the page
+    all_page_nums = []
     for a in soup.find_all("a", href=True):
         href = a["href"]
-        m = re.search(r"[?&/](?:page|pg|p)[=/](\d+)", href, re.IGNORECASE)
+        m = re.search(r"[?&]page=(\d+)", href, re.IGNORECASE)
         if m:
-            try:
-                candidates.append(int(m.group(1)))
-            except ValueError:
-                pass
+            all_page_nums.append(int(m.group(1)))
+            continue
+        m = re.search(r"/p(?:age)?/(\d+)", href, re.IGNORECASE)
+        if m:
+            all_page_nums.append(int(m.group(1)))
+    if all_page_nums:
+        return max(all_page_nums)
 
-    # Filter out obviously-wrong values (years, IDs > 9999, 0)
-    valid = [n for n in candidates if 1 < n <= 9999]
-    return max(valid) if valid else 1
+    # Pass 7 — plain text patterns like "Page 1 of 38" / "1 de 38"
+    full_text = soup.get_text(" ", strip=True)
+    for pattern in [
+        r"\bof\s+(\d+)\b",
+        r"\bde\s+(\d+)\b",
+        r"\bvan\s+(\d+)\b",
+        r"\bvon\s+(\d+)\b",
+        r"\bdi\s+(\d+)\b",
+        r"/\s*(\d+)\s*pages?",
+    ]:
+        matches = re.findall(pattern, full_text, re.IGNORECASE)
+        if matches:
+            total = max(int(v) for v in matches)
+            if total > 1:
+                return total
+
+    return None
 
 
 def _build_page_url(base_url: str, page_num: int) -> str:
@@ -330,13 +358,198 @@ def crawl(url: str, timeout: int = 15) -> CrawlResult:
     return CrawlResult(url=url, headings=_html_to_headings(html))
 
 
+@dataclass
+class SiteCrawlResult:
+    """One audited page from a whole-site crawl."""
+    site_root: str       # the seed URL that started the crawl
+    crawl: CrawlResult   # heading audit result
+
+
+def _extract_same_domain_links(page_url: str, html: str) -> list[str]:
+    """
+    Return all unique, same-domain, HTML links found on *html*.
+    Strips fragments; normalises trailing slashes.
+    """
+    from urllib.parse import urljoin
+    from pathlib import Path
+
+    parsed_base = urlparse(page_url)
+    domain = parsed_base.netloc
+    soup = BeautifulSoup(html, "html.parser")
+    seen: set[str] = set()
+    results: list[str] = []
+
+    for a in soup.find_all("a", href=True):
+        href = (a["href"] or "").strip()
+        if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+
+        full = urljoin(page_url, href)
+        p = urlparse(full)
+
+        if p.scheme not in ("http", "https"):
+            continue
+        if p.netloc != domain:
+            continue
+
+        # skip non-HTML assets by extension
+        ext = Path(p.path).suffix.lower()
+        if ext and ext in NON_HTML_EXTENSIONS:
+            continue
+
+        # normalise: strip fragment, strip trailing slash (unless root)
+        path = p.path or "/"
+        if path != "/":
+            path = path.rstrip("/")
+        normalised = f"{p.scheme}://{p.netloc}{path}"
+        if p.query:
+            normalised += f"?{p.query}"
+
+        if normalised not in seen:
+            seen.add(normalised)
+            results.append(normalised)
+    return results
+
+
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en,pt;q=0.9",
+}
+
+# Statuses that are worth retrying (rate-limit, server hiccup, gateway errors)
+_RETRY_STATUSES = {429, 500, 502, 503, 504}
+
+
+def _make_session() -> "requests.Session":
+    import requests as _req
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+
+    session = _req.Session()
+    retry = Retry(
+        total=3,
+        backoff_factor=1.0,           # waits 1s, 2s, 4s between retries
+        status_forcelist=_RETRY_STATUSES,
+        allowed_methods={"GET"},
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    session.headers.update(_HEADERS)
+    return session
+
+
+def _fetch_with_session(
+    session,
+    url: str,
+    timeout: int = 20,
+) -> Optional[str]:
+    """Fetch a single URL using an existing requests.Session."""
+    try:
+        r = session.get(url, timeout=timeout, allow_redirects=True)
+        if r.status_code >= 400:
+            return None
+        ct = r.headers.get("Content-Type", "")
+        if ct and "text/html" not in ct:
+            return None
+        return r.text
+    except Exception:
+        return None
+
+
+def crawl_site(
+    seed_url:          str,
+    max_pages:         int  = 500,
+    timeout:           int  = 20,
+    progress_callback        = None,
+    result_callback          = None,
+) -> list[SiteCrawlResult]:
+    """
+    BFS whole-site crawl — follows all same-domain HTML links starting from
+    *seed_url*, up to *max_pages* pages.
+
+    Keeps one Playwright browser open for the whole crawl (same pattern as
+    crawl_paginated) so JS-rendered pages are handled correctly and there is
+    no per-page browser startup overhead.
+    """
+    parsed_seed = urlparse(seed_url)
+    seed_normalised = urlunparse(parsed_seed._replace(fragment="")).rstrip("/") or seed_url
+
+    visited: set[str]              = set()
+    queue_:  list[str]             = [seed_normalised]
+    results: list[SiteCrawlResult] = []
+
+    _site_session = _make_session()
+
+    try:
+        browser = _Browser()
+    except Exception:
+        browser = None
+
+    def _fetch(url: str) -> Optional[str]:
+        if browser is not None:
+            html = browser.fetch(url, timeout=timeout)
+            if html is not None:
+                return html
+            # browser fetch failed for this URL — fall back to requests
+            return _fetch_with_session(_site_session, url, timeout=timeout)
+        return _fetch_with_session(_site_session, url, timeout=timeout)
+
+    try:
+        idx = 0
+        while queue_ and len(results) < max_pages:
+            url = queue_.pop(0)
+            if url in visited:
+                continue
+            visited.add(url)
+            idx += 1
+
+            if progress_callback:
+                progress_callback({
+                    "phase":  "crawling",
+                    "index":  idx,
+                    "queued": len(queue_),
+                    "url":    url,
+                })
+
+            html = _fetch(url)
+            if html is None:
+                cr = CrawlResult(url=url, headings=[],
+                                 error=f"Failed to fetch {url!r}")
+            else:
+                cr = CrawlResult(url=url, headings=_html_to_headings(html))
+                for link in _extract_same_domain_links(url, html):
+                    if link not in visited and link not in queue_:
+                        queue_.append(link)
+
+            sr = SiteCrawlResult(site_root=seed_url, crawl=cr)
+            results.append(sr)
+            if result_callback:
+                result_callback(sr)
+
+    finally:
+        if browser is not None:
+            browser.close()
+
+    if progress_callback:
+        progress_callback({"phase": "done", "total": len(results)})
+
+    return results
+
+
 def crawl_many(urls: list[str], timeout: int = 15) -> list[CrawlResult]:
     return [crawl(url, timeout=timeout) for url in urls]
 
 
 def crawl_paginated(
     listing_url:       str,
-    max_pages:         int = 20,
+    max_pages:         int = 500,
     max_items:         int = 200,
     timeout:           int = 15,
     progress_callback  = None,   # callable(dict)
@@ -383,8 +596,7 @@ def crawl_paginated(
         if first_html is None:
             return results
 
-        total_pages = _detect_total_pages(first_html)
-        total_pages = min(total_pages, max(1, max_pages))
+        total_pages = _detect_total_pages(first_html) or 1
 
         if progress_callback:
             progress_callback({

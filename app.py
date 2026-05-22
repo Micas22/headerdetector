@@ -16,7 +16,7 @@ import time
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 
 from checker import check_headings, SEVERITY_WARNING
-from crawler import crawl_many, crawl_paginated
+from crawler import crawl_many, crawl_paginated, crawl_site
 
 app = Flask(__name__)
 
@@ -178,6 +178,92 @@ def audit_paginated():
                 break
             if item is _HEARTBEAT:
                 # SSE comment — keeps the connection alive, ignored by the client
+                yield ": keep-alive\n\n"
+                continue
+            event_name, payload = item
+            if event_name == "result":
+                total_results += 1
+            yield f"event: {event_name}\ndata: {json.dumps(payload)}\n\n"
+
+    return Response(
+        stream_with_context(_generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control":     "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection":        "keep-alive",
+        },
+    )
+
+
+@app.post("/api/audit-site")
+def audit_site():
+    """
+    Streams Server-Sent Events for a whole-site BFS crawl.
+
+    Event types:
+      heartbeat — ": keep-alive" comment
+      progress  — {"phase":"crawling","index":N,"queued":Q,"url":"..."}
+                  {"phase":"done","total":N}
+      result    — {"site_root":"...","entry":{...}}
+      error     — {"message":"..."}
+      done      — {"total":N}
+    """
+    body = request.get_json(silent=True) or {}
+    raw_url: str = (body.get("url") or "").strip()
+    max_pages: int = int(body.get("max_pages") or 200)
+
+    if not raw_url:
+        return jsonify({"error": "No URL provided."}), 400
+    if not raw_url.startswith(("http://", "https://")):
+        raw_url = "https://" + raw_url
+
+    max_pages = max(1, min(max_pages, 2000))
+
+    event_queue: queue.Queue = queue.Queue()
+    _DONE      = object()
+    _HEARTBEAT = object()
+
+    def _heartbeat():
+        while True:
+            time.sleep(20)
+            event_queue.put(_HEARTBEAT)
+
+    threading.Thread(target=_heartbeat, daemon=True).start()
+
+    def _run():
+        try:
+            def _progress(info: dict):
+                event_queue.put(("progress", info))
+
+            def _on_result(sr):
+                entry = _build_result_entry(sr.crawl)
+                event_queue.put(("result", {
+                    "site_root": sr.site_root,
+                    "entry":     entry,
+                }))
+
+            crawl_site(
+                seed_url=raw_url,
+                max_pages=max_pages,
+                progress_callback=_progress,
+                result_callback=_on_result,
+            )
+        except Exception as exc:
+            event_queue.put(("error", {"message": str(exc)}))
+        finally:
+            event_queue.put(_DONE)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+    def _generate():
+        total_results = 0
+        while True:
+            item = event_queue.get()
+            if item is _DONE:
+                yield f"event: done\ndata: {json.dumps({'total': total_results})}\n\n"
+                break
+            if item is _HEARTBEAT:
                 yield ": keep-alive\n\n"
                 continue
             event_name, payload = item
