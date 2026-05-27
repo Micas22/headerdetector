@@ -19,8 +19,7 @@
 ### Key Features
 
 - **Strict Hierarchy Validation:** Ensures heading levels are not skipped downwards (e.g., H1 to H3 is invalid, but H3 to H2 is allowed).
-- **Single H1 Enforcement:** Validates that each page contains exactly one H1 tag.
-- **Image Accessibility Check:** Identifies image-only headings and verifies the presence of `alt` text for screen readers.
+- **Single H1 Enforcement:** Validates that each page contains exactly one H1 tag..
 - **Versatile Crawling Modes:**
   - **Single Page Audit:** Analyze individual URLs.
   - **Paginated Listing Audit:** Auto-detect pagination, harvest item links from listings (e.g., news or events), and audit every detail page.
@@ -82,13 +81,6 @@ python app.py
 - `crawler.py`: Handles Playwright browser sessions, HTML parsing, pagination detection, and link extraction.
 - `templates/`: Contains the frontend HTML and UI views.
 
----
-*Built with passion for accessible and structurally sound web pages.*
-
-<br><br>
-
----
-
 <a id="portugues"></a>
 ## Versão em Português
 
@@ -105,7 +97,6 @@ O **Header Detector** é uma ferramenta especializada de web scraping e auditori
 
 - **Validação de Hierarquia Estrita:** Garante que os níveis de cabeçalho não sejam pulados para baixo (por exemplo, H1 para H3 é inválido, mas H3 para H2 é permitido).
 - **Aplicação de H1 Único:** Valida se cada página contém exatamente uma tag H1.
-- **Verificação de Acessibilidade de Imagens:** Identifica cabeçalhos contendo apenas imagens e verifica a presença de texto alternativo (`alt`) para leitores de tela.
 - **Modos Versáteis de Rastreamento:**
   - **Auditoria de Página Única:** Analise URLs individuais.
   - **Auditoria de Listagem Paginada:** Detecte paginação automaticamente, colete links de itens de listagens (como notícias ou eventos) e audite cada página de detalhes.
@@ -166,6 +157,3 @@ python app.py
 - `checker.py`: Lógica central para validar a regra de H1 único, progressão hierárquica e acessibilidade de cabeçalhos com imagens.
 - `crawler.py`: Lida com sessões do navegador Playwright, análise de HTML, detecção de paginação e extração de links.
 - `templates/`: Contém o HTML do frontend e as visualizações da interface do usuário.
-
----
-*Construído com paixão para páginas web acessíveis e estruturalmente sólidas.*
