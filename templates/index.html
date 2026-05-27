@@ -343,7 +343,6 @@
       cursor: pointer;
       user-select: none;
     }
-    .card-header:hover .card-url { color: var(--accent); }
     .card-url-wrap { min-width: 0; flex: 1; }
     .card-url {
       font-family: var(--mono);
@@ -351,7 +350,12 @@
       color: var(--text);
       word-break: break-all;
       transition: color 0.15s;
+      text-decoration: none;
+      user-select: all;
+      cursor: text;
+      display: block;
     }
+    .card-url:hover { color: var(--accent); text-decoration: underline; cursor: pointer; }
     .card-meta { font-size: 0.7rem; color: var(--muted); margin-top: 3px; font-family: var(--mono); }
 
     .card-badges { display: flex; align-items: center; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
@@ -1015,7 +1019,7 @@
         <div class="card-stripe"></div>
         <div class="card-header" onclick="toggleCard(${idx})">
           <div class="card-url-wrap">
-            <div class="card-url">${escHtml(r.url)}</div>
+            <a class="card-url" href="${escHtml(r.url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${escHtml(r.url)}</a>
             ${meta ? `<div class="card-meta">${meta}</div>` : ''}
           </div>
           <div class="card-badges">
@@ -1327,7 +1331,7 @@
       if (currentMode === 'paginated') {
         await runPaginatedAudit(urls);
       } else if (currentMode === 'site') {
-        await runSiteAudit(urls[0]);   // single seed URL
+        await runSiteAudit(urls[0]);
       } else {
         await runSingleAudit(urls);
       }
