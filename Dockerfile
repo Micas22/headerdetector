@@ -19,8 +19,12 @@ RUN playwright install chromium --with-deps
 # Copy project
 COPY . /app/
 
-# Expose port
-EXPOSE 5000
+# Copy and make entrypoint script executable
+COPY entrypoint.sh /app/
+RUN chmod +x /app/entrypoint.sh
 
-# Run the application
-CMD ["gunicorn", "--workers=2", "--threads=8", "--bind=0.0.0.0:5000", "app:app"]
+# Expose ports
+EXPOSE 5000 8000
+
+# Run the entrypoint script
+CMD ["/app/entrypoint.sh"]
