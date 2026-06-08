@@ -4,32 +4,29 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Heading Auditor</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Syne+Mono&family=Syne:wght@400;700;800&display=swap" rel="stylesheet" />
-
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    :root {
-      --bg:        #0a0c0f;
-      --surface:   #111418;
-      --border:    #1e2329;
-      --border-hi: #2e3540;
-      --text:      #d4dae4;
-      --muted:     #4a5568;
-      --pass:      #00e5a0;
-      --pass-dim:  #00e5a015;
-      --fail:      #ff4d6a;
-      --fail-dim:  #ff4d6a12;
-      --warn:      #f5a623;
-      --warn-dim:  #f5a62314;
-      --accent:    #4f8ef7;
-      --accent-dim:#4f8ef710;
-      --img:       #c084fc;
-      --img-dim:   #c084fc12;
-      --mono:      'Syne Mono', monospace;
-      --sans:      'Syne', sans-serif;
-      --r:         6px;
+        :root {
+      --bg:        #1e1e2e;
+      --surface:   #181825;
+      --border:    #313244;
+      --border-hi: #45475a;
+      --text:      #cdd6f4;
+      --muted:     #a6adc8;
+      --pass:      #a6e3a1;
+      --pass-dim:  #a6e3a115;
+      --fail:      #f38ba8;
+      --fail-dim:  #f38ba815;
+      --warn:      #f9e2af;
+      --warn-dim:  #f9e2af15;
+      --accent:    #89b4fa;
+      --accent-dim:#89b4fa15;
+      --img:       #cba6f7;
+      --img-dim:   #cba6f715;
+      --mono:      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --sans:      ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --r:         8px;
     }
 
     html { font-size: 15px; }
@@ -41,17 +38,7 @@
       min-height: 100vh;
       padding-bottom: 80px;
     }
-
-    body::before {
-      content: '';
-      position: fixed; inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
-      opacity: 0.025;
-      pointer-events: none;
-      z-index: 0;
-    }
-
-    .wrap {
+.wrap {
       position: relative; z-index: 1;
       max-width: 860px;
       margin: 0 auto;
@@ -77,9 +64,9 @@
       font-weight: 800;
       letter-spacing: -0.02em;
       line-height: 1;
-      color: #fff;
+      color: var(--text);
     }
-    h1.logo span { color: var(--pass); }
+    h1.logo span { color: var(--accent); }
     .header-sub {
       margin-top: 10px;
       color: var(--muted);
@@ -195,8 +182,8 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      background: var(--pass);
-      color: #000;
+      background: var(--accent);
+      color: #1e1e2e;
       font-family: var(--mono);
       font-size: 0.78rem;
       font-weight: 600;
@@ -214,10 +201,9 @@
     .btn-audit:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
     .spinner {
       width: 14px; height: 14px;
-      border: 2px solid #0004;
-      border-top-color: #000;
+      border: 2px solid #1e1e2e44;
+      border-top-color: #1e1e2e;
       border-radius: 50%;
-      animation: spin 0.6s linear infinite;
       display: none;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -235,7 +221,7 @@
       font-family: var(--mono);
       font-size: 0.75rem;
     }
-    #progress-box.visible { display: block; animation: fadeUp 0.25s ease; }
+    #progress-box.visible { display: block; }
     .progress-label { color: var(--muted); margin-bottom: 8px; }
     .progress-label strong { color: var(--text); }
     .progress-track {
@@ -274,7 +260,7 @@
       font-size: 0.78rem;
       flex-wrap: wrap;
     }
-    #summary-bar.visible { display: flex; animation: fadeUp 0.3s ease; }
+    #summary-bar.visible { display: flex; }
     .sum-item { display: flex; align-items: center; gap: 6px; color: var(--muted); }
     .sum-item strong { font-size: 1.1rem; }
     .sum-item.total strong { color: var(--text); }
@@ -317,7 +303,6 @@
       border: 1px solid var(--border);
       border-radius: var(--r);
       overflow: hidden;
-      animation: fadeUp 0.35s ease both;
     }
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(12px); }
@@ -560,223 +545,7 @@
     }
     #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-    /* ══════════════════════════════════════════════
-       GRATUITOUS ANIMATIONS (as requested, for no
-       particular reason whatsoever)
-    ══════════════════════════════════════════════ */
-
-    /* Logo: gentle float */
-    h1.logo {
-      animation: logoFloat 4s ease-in-out infinite;
-    }
-    @keyframes logoFloat {
-      0%,100% { transform: translateY(0); }
-      50%      { transform: translateY(-5px); }
-    }
-
-    /* Header eyebrow: shimmer sweep */
-    .header-eyebrow {
-      background: linear-gradient(90deg, var(--muted) 0%, var(--accent) 50%, var(--muted) 100%);
-      background-size: 200% auto;
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      animation: shimmer 3s linear infinite;
-    }
-    @keyframes shimmer {
-      to { background-position: 200% center; }
-    }
-
-    /* Mode buttons: wiggle on hover */
-    .mode-btn {
-      transition: background 0.15s, color 0.15s, transform 0.15s;
-    }
-    .mode-btn:hover:not(.active) {
-      color: var(--text);
-      animation: wiggle 0.4s ease;
-    }
-    @keyframes wiggle {
-      0%,100% { transform: rotate(0deg); }
-      25%      { transform: rotate(-3deg); }
-      75%      { transform: rotate(3deg); }
-    }
-
-    /* Active mode button: pulsing glow */
-    .mode-btn.active {
-      background: var(--border-hi);
-      color: var(--text);
-      box-shadow: 0 0 0 0 var(--accent);
-      animation: modeGlow 2s ease-in-out infinite;
-    }
-    @keyframes modeGlow {
-      0%,100% { box-shadow: 0 0 0 0 #4f8ef720; }
-      50%      { box-shadow: 0 0 8px 2px #4f8ef740; }
-    }
-
-    /* Audit button: bounce on hover */
-    .btn-audit:not(:disabled):hover {
-      opacity: 0.88;
-      animation: btnBounce 0.5s ease;
-    }
-    @keyframes btnBounce {
-      0%,100% { transform: scale(1); }
-      30%      { transform: scale(1.07); }
-      60%      { transform: scale(0.96); }
-    }
-
-    /* Cards: staggered slide-in with bounce */
-    .card {
-      animation: cardPop 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
-    }
-    @keyframes cardPop {
-      from { opacity: 0; transform: translateY(20px) scale(0.97); }
-      to   { opacity: 1; transform: translateY(0)   scale(1); }
-    }
-
-    /* Card stripe: shimmer on pass */
-    .card.is-pass .card-stripe {
-      background: linear-gradient(90deg, var(--pass), #00ffcc, var(--pass));
-      background-size: 200% auto;
-      animation: stripeSlide 2.5s linear infinite;
-    }
-    @keyframes stripeSlide {
-      to { background-position: 200% center; }
-    }
-
-    /* Card stripe: pulse on fail */
-    .card.is-fail .card-stripe {
-      animation: failPulse 1.4s ease-in-out infinite;
-    }
-    @keyframes failPulse {
-      0%,100% { opacity: 1; }
-      50%      { opacity: 0.5; }
-    }
-
-    /* Badges: pop-in */
-    .badge {
-      animation: badgePop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.5) both;
-    }
-    @keyframes badgePop {
-      from { opacity: 0; transform: scale(0.6); }
-      to   { opacity: 1; transform: scale(1); }
-    }
-
-    /* Chevron: smooth rotation already, add colour transition */
-    .chevron {
-      transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.5), color 0.2s;
-    }
-    .card.open .chevron {
-      transform: rotate(180deg);
-      color: var(--accent);
-    }
-
-    /* Progress fill: animated gradient */
-    .progress-fill {
-      background: linear-gradient(90deg, var(--accent), #00e5ff, var(--accent));
-      background-size: 200% auto;
-      animation: progressShimmer 1.2s linear infinite;
-      transition: width 0.4s ease;
-    }
-    @keyframes progressShimmer {
-      to { background-position: 200% center; }
-    }
-
-    /* Summary bar: count-in */
-    #summary-bar.visible {
-      animation: summaryIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
-    }
-    @keyframes summaryIn {
-      from { opacity: 0; transform: translateY(-8px) scale(0.98); }
-      to   { opacity: 1; transform: translateY(0) scale(1); }
-    }
-
-    /* Summary numbers: colour pulse when updated */
-    .sum-item strong {
-      display: inline-block;
-      transition: transform 0.2s;
-    }
-    .sum-item strong.bump {
-      animation: numBump 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.5);
-    }
-    @keyframes numBump {
-      0%,100% { transform: scale(1); }
-      50%      { transform: scale(1.4); }
-    }
-
-    /* Toast: slide + bounce */
-    #toast.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-      animation: toastBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.5);
-    }
-    @keyframes toastBounce {
-      from { transform: translateX(-50%) translateY(20px); opacity: 0; }
-      to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
-    }
-
-    /* Input section: glow border on focus-within */
-    .input-section {
-      transition: border-color 0.3s, box-shadow 0.3s;
-    }
-    .input-section:focus-within {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px #4f8ef718;
-    }
-
-    /* Site-crawl spinning globe in progress */
-    #site-globe {
-      display: inline-block;
-      animation: globeSpin 2s linear infinite;
-      font-size: 1.1rem;
-    }
-    @keyframes globeSpin {
-      from { transform: rotateY(0deg); }
-      to   { transform: rotateY(360deg); }
-    }
-
-    /* BFS node trail animation (site mode progress URL) */
-    .progress-url {
-      transition: opacity 0.2s;
-      animation: urlFade 0.3s ease;
-    }
-    @keyframes urlFade {
-      from { opacity: 0; transform: translateX(6px); }
-      to   { opacity: 1; transform: translateX(0); }
-    }
-
-    /* Listing-group header: slide down */
-    .listing-group {
-      animation: groupSlideIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
-    }
-    @keyframes groupSlideIn {
-      from { opacity: 0; transform: translateX(-12px); }
-      to   { opacity: 1; transform: translateX(0); }
-    }
-
-    /* Issues block: flash yellow once on first render */
-    .issues-block {
-      animation: issueFlash 0.6s ease;
-    }
-    @keyframes issueFlash {
-      0%   { background: #f5a62312; }
-      100% { background: transparent; }
-    }
-
-    /* Header sub: type-on flicker */
-    .header-sub {
-      animation: flicker 8s ease-in-out infinite;
-    }
-    @keyframes flicker {
-      0%,95%,100% { opacity: 1; }
-      97%          { opacity: 0.4; }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after {
-        animation-duration: 0.001ms !important;
-        transition-duration: 0.001ms !important;
-      }
-    }
+    
 
     @media (max-width: 560px) {
       .checks-row { grid-template-columns: 1fr; }
@@ -795,9 +564,9 @@
 
   <!-- mode toggle -->
   <div class="mode-toggle">
-    <button class="mode-btn active" id="btn-mode-single" onclick="setMode('single')">▶ Single pages</button>
-    <button class="mode-btn" id="btn-mode-paginated" onclick="setMode('paginated')">⬛ Paginated listing</button>
-    <button class="mode-btn" id="btn-mode-site" onclick="setMode('site')">🌐 Whole site</button>
+    <button class="mode-btn active" id="btn-mode-single" onclick="setMode('single')">Single pages</button>
+    <button class="mode-btn" id="btn-mode-paginated" onclick="setMode('paginated')">Paginated listing</button>
+    <button class="mode-btn" id="btn-mode-site" onclick="setMode('site')">Whole site</button>
   </div>
 
   <section class="input-section">
@@ -825,8 +594,7 @@
         </label>
       </div>
       <button class="btn-audit" id="audit-btn" onclick="runAudit()">
-        <span class="btn-icon">▶</span>
-        <div class="spinner"></div>
+                <div class="spinner"></div>
         <span id="btn-label">Run Audit</span>
       </button>
     </div>
@@ -923,7 +691,7 @@
         : '';
     return `
       <div class="img-h1-callout">
-        <div class="img-h1-callout-title"><span class="ci">🖼</span> Image acting as &lt;h1&gt;</div>
+        <div class="img-h1-callout-title">Image acting as &lt;h1&gt;</div>
         <div class="img-h1-detail">
           This page's &lt;h1&gt; contains an image instead of text.
           It counts as a valid heading but may affect SEO and accessibility depending on alt text.
@@ -944,7 +712,7 @@
       ? `<span class="badge warn">Fetch Error</span>`
       : `<span class="badge ${isPass ? 'pass' : 'fail'}">${isPass ? 'Pass' : 'Fail'}</span>`;
     const imgBadge = hasImgH1 && !r.fetch_error
-      ? `<span class="badge img-h1">🖼 Image H1</span>` : '';
+      ? `<span class="badge img-h1">Image H1</span>` : '';
     const h1Badge = !r.fetch_error
       ? `<span class="badge ${r.h1_pass ? 'pass' : 'fail'}">H1</span>` : '';
 
@@ -959,14 +727,14 @@
       checksRow = `
         <div class="checks-row">
           <div class="check-cell">
-            <span class="check-icon">${r.h1_pass ? (r.h1_is_image ? '🖼' : '✅') : '❌'}</span>
+            <span class="check-icon">${r.h1_pass ? (r.h1_is_image ? 'Img' : 'Pass') : 'Fail'}</span>
             <div>
               <div class="check-name">Single &lt;h1&gt;</div>
               <div class="check-detail">${h1Detail}</div>
             </div>
           </div>
           <div class="check-cell">
-            <span class="check-icon">${r.hierarchy_pass ? '✅' : '❌'}</span>
+            <span class="check-icon">${r.hierarchy_pass ? 'Pass' : 'Fail'}</span>
             <div>
               <div class="check-name">Heading hierarchy</div>
               <div class="check-detail">${r.hierarchy_pass
@@ -1000,7 +768,7 @@
           const tagCls = `${h.tag}${isImg ? ' img' : ''}`;
           const alts = (h.image_alts || []).filter(Boolean);
           const label = isImg
-            ? `<span class="tree-img-chip">🖼 image${alts.length ? ` · alt: "${escHtml(alts[0])}"` : ' · no alt'}</span>`
+            ? `<span class="tree-img-chip">Image${alts.length ? ` · alt: "${escHtml(alts[0])}"` : ' · no alt'}</span>`
             : `<span class="tree-text">${escHtml(h.text)}</span>`;
           return `
             <div class="tree-node">
@@ -1012,7 +780,7 @@
       </div>` : '';
 
     const fetchErrHtml = r.fetch_error
-      ? `<div class="fetch-error">✗ ${escHtml(r.fetch_error)}</div>` : '';
+      ? `<div class="fetch-error">Error: ${escHtml(r.fetch_error)}</div>` : '';
 
     return `
       <div class="card ${cardCls}" id="card-${idx}">
@@ -1133,7 +901,7 @@
         div.id = groups[listingUrl].domId;
         div.innerHTML = `
           <div class="listing-group-header">
-            <span>📋</span>
+            <span class="listing-label">Listing:</span>
             <span class="listing-url">${escHtml(listingUrl)}</span>
             <span class="listing-stats" id="${groups[listingUrl].domId}-stats">0 pages crawled</span>
           </div>
@@ -1219,7 +987,7 @@
     const resultsEl = $('results');
 
     pb.classList.add('visible');
-    plabel.innerHTML = '<span id="site-globe">🌐</span> Discovering pages…';
+    plabel.innerHTML = 'Discovering pages…';
     pfill.style.width = '0%';
 
     const allResults = [];
@@ -1243,7 +1011,7 @@
     groupDiv.className = 'listing-group';
     groupDiv.innerHTML = `
       <div class="listing-group-header">
-        <span>🌐</span>
+        <span class="listing-label">Site:</span>
         <span class="listing-url">${escHtml(seedUrl)}</span>
         <span class="listing-stats" id="site-group-stats">Crawling…</span>
       </div>
@@ -1277,7 +1045,7 @@
             // Indeterminate scroll — fill grows slowly up to 90% as we discover
             const sofCap = Math.min(payload.index / maxPages, 0.9);
             pfill.style.width = `${Math.round(sofCap * 100)}%`;
-            plabel.innerHTML = `<span id="site-globe">🌐</span> <strong>Crawling</strong> — ${payload.index} audited · ${payload.queued} queued`;
+            plabel.innerHTML = `<strong>Crawling</strong> — ${payload.index} audited · ${payload.queued} queued`;
             // Re-trigger URL fade animation
             purl.style.animation = 'none';
             void purl.offsetWidth;
@@ -1285,7 +1053,7 @@
             purl.textContent = payload.url || '';
           } else if (payload.phase === 'done') {
             pfill.style.width = '100%';
-            plabel.innerHTML = `✅ <strong>Done</strong> — ${payload.total} page${payload.total !== 1 ? 's' : ''} crawled`;
+            plabel.innerHTML = `<strong>Done</strong> — ${payload.total} page${payload.total !== 1 ? 's' : ''} crawled`;
             purl.textContent = '';
           }
         } else if (eventName === 'result') {
@@ -1310,7 +1078,7 @@
           showToast(payload.message || 'Crawl error');
         } else if (eventName === 'done') {
           pfill.style.width = '100%';
-          plabel.innerHTML = `✅ <strong>Done</strong> — ${payload.total} page${payload.total !== 1 ? 's' : ''} audited`;
+          plabel.innerHTML = `<strong>Done</strong> — ${payload.total} page${payload.total !== 1 ? 's' : ''} audited`;
         }
       }
     }

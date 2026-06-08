@@ -59,19 +59,37 @@ class PaginatedCrawlResult:
 # ── heading extraction ────────────────────────────────────────────────────────
 
 def _extract_heading(tag) -> Heading:
-    level      = int(tag.name[1])
+    if tag.name in HEADING_TAGS:
+        level = int(tag.name[1])
+        tag_name = tag.name
+    else:
+        level_str = tag.get("aria-level", "2")
+        try:
+            level = int(level_str)
+        except ValueError:
+            level = 2
+        tag_name = tag.name
+
     text       = tag.get_text(separator=" ", strip=True)
     imgs       = tag.find_all("img")
     svgs       = tag.find_all("svg")
     is_image   = bool(imgs or svgs)
     image_alts = [img.get("alt", "").strip() for img in imgs]
-    return Heading(level=level, text=text, tag=tag.name,
+    return Heading(level=level, text=text, tag=tag_name,
                    is_image=is_image, image_alts=image_alts)
 
 
 def _html_to_headings(html: str) -> list[Heading]:
     soup = BeautifulSoup(html, "html.parser")
-    return [_extract_heading(tag) for tag in soup.find_all(HEADING_TAGS)]
+    
+    def is_heading(tag):
+        if tag.name in HEADING_TAGS:
+            return True
+        if tag.get("role") == "heading":
+            return True
+        return False
+
+    return [_extract_heading(tag) for tag in soup.find_all(is_heading)]
 
 
 # ── Playwright fetch (keeps a single browser open per call) ──────────────────
@@ -91,11 +109,24 @@ class _Browser:
         from playwright.sync_api import TimeoutError as PWTimeout
         page = self._ctx.new_page()
         try:
-            page.goto(url, timeout=timeout * 1000, wait_until="domcontentloaded")
+            try:
+                page.goto(url, timeout=timeout * 1000, wait_until="domcontentloaded")
+            except PWTimeout:
+                pass
+            
+            try:
+                # wait for h1 to appear, giving SPAs time to render
+                page.wait_for_selector("h1, [role='heading'][aria-level='1']", timeout=2000, state="attached")
+            except Exception:
+                pass
+
             try:
                 page.wait_for_load_state("networkidle", timeout=4000)
             except PWTimeout:
                 pass
+                
+            page.wait_for_timeout(500)
+            
             html = page.content()
             return html if html and len(html) > 200 else None
         except Exception:
@@ -120,7 +151,7 @@ def _fetch_html_simple(url: str, timeout: int = 15) -> Optional[str]:
             return browser.fetch(url, timeout=timeout)
         finally:
             browser.close()
-    except ImportError:
+    except Exception:
         import requests as _req
         try:
             r = _req.get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; HeadingAuditor/2.0)"},
@@ -266,23 +297,22 @@ def _extract_item_links(listing_url: str, html: str) -> list[str]:
         r"[?&/](?:page|pg|p)[=/]\d+", re.IGNORECASE
     )
 
+    from urllib.parse import urljoin
+
+    def _strip_www(netloc: str) -> str:
+        return netloc[4:] if netloc.startswith("www.") else netloc
+
     def _normalise(href: str) -> Optional[str]:
         href = href.strip()
         if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
             return None
+        
         # resolve relative
-        if href.startswith("//"):
-            href = parsed_base.scheme + ":" + href
-        elif href.startswith("/"):
-            href = f"{parsed_base.scheme}://{domain}{href}"
-        elif not href.startswith("http"):
-            # relative path — resolve against base
-            base_dir = base_path.rsplit("/", 1)[0]
-            href = f"{parsed_base.scheme}://{domain}{base_dir}/{href}"
+        href = urljoin(listing_url, href)
 
         p = urlparse(href)
-        # same domain only
-        if p.netloc != domain:
+        # same domain only (allowing www. variations)
+        if _strip_www(p.netloc) != _strip_www(domain):
             return None
         # not a pagination URL
         if PAGINATION_RE.search(href):
@@ -296,7 +326,8 @@ def _extract_item_links(listing_url: str, html: str) -> list[str]:
         if suffix in NON_HTML_EXTENSIONS:
             return None
         # normalise: strip fragment, trailing slash
-        return urlunparse(p._replace(fragment="")).rstrip("/") or href
+        p = p._replace(netloc=_strip_www(p.netloc), fragment="")
+        return urlunparse(p).rstrip("/") or href
 
     # --- collect from card containers first (higher confidence) ---
     CARD_SELECTORS = [
@@ -339,11 +370,10 @@ def _extract_item_links(listing_url: str, html: str) -> list[str]:
             if not url:
                 continue
             p = urlparse(url)
-            # heuristic: path must be deeper than the listing base
-            # (at least one extra path segment)
+            # heuristic: path must be deeper or at the same level as the listing base
             path_parts = [x for x in p.path.split("/") if x]
             base_parts = [x for x in base_path.split("/") if x]
-            if len(path_parts) > len(base_parts):
+            if len(path_parts) >= len(base_parts):
                 _add(href)
 
     return results
@@ -389,7 +419,11 @@ def _extract_same_domain_links(page_url: str, html: str) -> list[str]:
 
         if p.scheme not in ("http", "https"):
             continue
-        if p.netloc != domain:
+
+        def _strip_www(netloc: str) -> str:
+            return netloc[4:] if netloc.startswith("www.") else netloc
+
+        if _strip_www(p.netloc) != _strip_www(domain):
             continue
 
         # skip non-HTML assets by extension
@@ -401,7 +435,7 @@ def _extract_same_domain_links(page_url: str, html: str) -> list[str]:
         path = p.path or "/"
         if path != "/":
             path = path.rstrip("/")
-        normalised = f"{p.scheme}://{p.netloc}{path}"
+        normalised = f"{p.scheme}://{_strip_www(p.netloc)}{path}"
         if p.query:
             normalised += f"?{p.query}"
 
@@ -432,13 +466,14 @@ def _make_session() -> "requests.Session":
 
     session = _req.Session()
     retry = Retry(
-        total=3,
-        backoff_factor=1.0,           # waits 1s, 2s, 4s between retries
+        total=5,
+        backoff_factor=2.0,           # waits 2s, 4s, 8s, 16s, 32s between retries
         status_forcelist=_RETRY_STATUSES,
         allowed_methods={"GET"},
         raise_on_status=False,
+        respect_retry_after_header=True,
     )
-    adapter = HTTPAdapter(max_retries=retry)
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=10)
     session.mount("https://", adapter)
     session.mount("http://", adapter)
     session.headers.update(_HEADERS)
@@ -469,23 +504,27 @@ def crawl_site(
     timeout:           int  = 20,
     progress_callback        = None,
     result_callback          = None,
+    request_delay:     float = 0.5,  # seconds between requests
 ) -> list[SiteCrawlResult]:
     """
     BFS whole-site crawl — follows all same-domain HTML links starting from
     *seed_url*, up to *max_pages* pages.
 
-    Keeps one Playwright browser open for the whole crawl (same pattern as
-    crawl_paginated) so JS-rendered pages are handled correctly and there is
-    no per-page browser startup overhead.
+    Keeps one requests.Session open for connection pooling and reuse.
+    Uses request_delay to throttle requests and avoid overwhelming the server.
     """
+    import time
+    
     parsed_seed = urlparse(seed_url)
-    seed_normalised = urlunparse(parsed_seed._replace(fragment="")).rstrip("/") or seed_url
+    seed_netloc = parsed_seed.netloc[4:] if parsed_seed.netloc.startswith("www.") else parsed_seed.netloc
+    seed_normalised = urlunparse(parsed_seed._replace(netloc=seed_netloc, fragment="")).rstrip("/") or seed_url
 
     visited: set[str]              = set()
     queue_:  list[str]             = [seed_normalised]
     results: list[SiteCrawlResult] = []
 
     _site_session = _make_session()
+    last_request_time = 0
 
     try:
         browser = _Browser()
@@ -493,12 +532,22 @@ def crawl_site(
         browser = None
 
     def _fetch(url: str) -> Optional[str]:
+        nonlocal last_request_time
+        
+        # Throttle requests to avoid overwhelming the server
+        elapsed = time.time() - last_request_time
+        if elapsed < request_delay:
+            time.sleep(request_delay - elapsed)
+        last_request_time = time.time()
+        
         if browser is not None:
-            html = browser.fetch(url, timeout=timeout)
-            if html is not None:
-                return html
+            try:
+                html = browser.fetch(url, timeout=timeout)
+                if html is not None:
+                    return html
+            except Exception:
+                pass
             # browser fetch failed for this URL — fall back to requests
-            return _fetch_with_session(_site_session, url, timeout=timeout)
         return _fetch_with_session(_site_session, url, timeout=timeout)
 
     try:
@@ -536,6 +585,7 @@ def crawl_site(
     finally:
         if browser is not None:
             browser.close()
+        _site_session.close()
 
     if progress_callback:
         progress_callback({"phase": "done", "total": len(results)})
@@ -553,6 +603,7 @@ def crawl_paginated(
     max_items:         int = 200,
     timeout:           int = 15,
     progress_callback  = None,   # callable(dict)
+    request_delay:     float = 0.3,  # seconds between requests
 ) -> list[PaginatedCrawlResult]:
     """
     Two-phase crawl mirroring the orchestrator pattern:
@@ -564,13 +615,22 @@ def crawl_paginated(
     Phase 2 — audit each item page
         Fetch every collected item URL and run the heading check.
 
+    Includes request throttling to avoid overwhelming the server.
+
     progress_callback receives:
         {"phase": "listing", "page": N, "total_pages": T, "found_so_far": K}
         {"phase": "items",   "index": N, "total": T, "url": url}
     """
+    import time
+    
+    parsed_listing = urlparse(listing_url)
+    listing_netloc = parsed_listing.netloc[4:] if parsed_listing.netloc.startswith("www.") else parsed_listing.netloc
+    listing_url = urlunparse(parsed_listing._replace(netloc=listing_netloc, fragment="")).rstrip("/") or listing_url
+
     results:    list[PaginatedCrawlResult] = []
     item_seen:  set[str]                   = set()
     item_links: list[tuple[str, int]]      = []   # (url, listing_page_number)
+    last_request_time = 0
 
     # Keep one browser open for the whole crawl — much faster than
     # opening/closing per page.
@@ -579,10 +639,23 @@ def crawl_paginated(
     except ImportError:
         browser = None  # will fall back to requests inside _fetch
 
+    _site_session = _make_session()
+
     def _fetch(url: str) -> Optional[str]:
+        nonlocal last_request_time
+        
+        # Throttle requests to avoid overwhelming the server
+        elapsed = time.time() - last_request_time
+        if elapsed < request_delay:
+            time.sleep(request_delay - elapsed)
+        last_request_time = time.time()
+        
         if browser is not None:
-            return browser.fetch(url, timeout=timeout)
-        return _fetch_html_simple(url, timeout=timeout)
+            try:
+                return browser.fetch(url, timeout=timeout)
+            except Exception:
+                pass
+        return _fetch_with_session(_site_session, url, timeout=timeout)
 
     def _harvest(html: str, page_num: int):
         for link in _extract_item_links(listing_url, html):
@@ -645,5 +718,6 @@ def crawl_paginated(
     finally:
         if browser is not None:
             browser.close()
+        _site_session.close()
 
     return results
